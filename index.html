@@ -1,0 +1,997 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Supervisión Operativa 360</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/feather-icons"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+    .active-nav { background-color: #eef2ff; color: #4f46e5; border-right: 3px solid #4f46e5; font-weight: 600; }
+    .active-nav i { color: #4f46e5; }
+    .sidebar-anim { transition: transform 0.25s ease-in-out; }
+  </style>
+</head>
+<body class="flex h-screen overflow-hidden text-slate-800">
+
+  <!-- ================= PANTALLA DE LOGIN CON BIOMETRÍA ================= -->
+  <div id="loginView" class="fixed inset-0 z-50 bg-slate-100 flex items-center justify-center p-4">
+    <div class="bg-white max-w-md w-full rounded-2xl shadow-xl border border-slate-200 p-8 space-y-6">
+      <div class="text-center">
+        <div class="w-12 h-12 bg-indigo-600 rounded-xl flex items-center justify-center text-white mx-auto mb-4 shadow-md shadow-indigo-100">
+          <i data-feather="shield" class="w-6 h-6"></i>
+        </div>
+        <h1 class="text-2xl font-bold text-slate-900 tracking-tight">Supervisión 360</h1>
+        <p class="text-sm text-slate-500 mt-1">Acceso seguro a operaciones patrimoniales</p>
+      </div>
+
+      <!-- BOTÓN DE INGRESO BIOMÉTRICO (Aparece automáticamente si la huella ya fue vinculada) -->
+      <div id="cajaBiometriaLogin" class="hidden space-y-4">
+        <button id="btnEntrarBio" onclick="ingresarConBiometria()" type="button" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-xl py-3.5 transition flex items-center justify-center gap-2 shadow-sm text-sm">
+          <i data-feather="fingerprint" class="w-5 h-5 text-indigo-400"></i>
+          <span id="btnEntrarBioTexto">Entrar con Huella / FaceID</span>
+        </button>
+        <div class="relative flex py-1 items-center">
+          <div class="flex-grow border-t border-slate-200"></div>
+          <span class="flex-shrink mx-3 text-xs text-slate-400 font-bold uppercase tracking-wider">o ingresar con correo</span>
+          <div class="flex-grow border-t border-slate-200"></div>
+        </div>
+      </div>
+
+      <!-- FASE 1: PEDIR CORREO -->
+      <div id="p1" class="space-y-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Correo Electrónico</label>
+          <input type="email" id="email" placeholder="usuario@empresa.com" class="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
+        </div>
+        <button onclick="pedirCod()" id="btnSolicitarCod" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg py-2.5 transition text-sm">
+          Enviar Código de Acceso
+        </button>
+      </div>
+
+      <!-- FASE 2: VERIFICAR CÓDIGO -->
+      <div id="p2" class="space-y-4 hidden">
+        <div class="bg-indigo-50 text-indigo-800 text-xs p-3 rounded-lg text-center font-medium">
+          Hemos enviado un código de 6 dígitos a tu correo.
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Código de 6 dígitos</label>
+          <input type="text" id="codigo" placeholder="123456" maxlength="6" inputmode="numeric" class="w-full border border-slate-300 rounded-lg px-4 py-2 text-center text-2xl tracking-widest font-black focus:ring-2 focus:ring-indigo-500 outline-none">
+        </div>
+        <button onclick="login()" id="btnVerificarCod" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg py-2.5 transition text-sm">
+          Ingresar al Panel
+        </button>
+        <button type="button" onclick="resetLogin()" class="w-full text-xs text-slate-500 hover:text-slate-800 font-medium text-center">Usar otro correo</button>
+      </div>
+
+      <p id="msgLog" class="text-xs text-rose-600 text-center font-semibold min-h-[16px]"></p>
+    </div>
+  </div>
+
+  <!-- ================= APLICACIÓN PRINCIPAL ================= -->
+  <div id="mobile-overlay" onclick="toggleSidebar()" class="fixed inset-0 bg-slate-900/50 z-20 hidden lg:hidden"></div>
+
+  <!-- SIDEBAR -->
+  <aside id="sidebar" class="w-72 bg-white border-r border-slate-200 flex flex-col fixed inset-y-0 left-0 z-30 transform -translate-x-full lg:relative lg:translate-x-0 sidebar-anim">
+    <div class="h-16 flex items-center justify-between px-6 border-b border-slate-100">
+      <div class="flex items-center space-x-3">
+        <div class="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white"><i data-feather="shield"></i></div>
+        <span class="font-bold text-base text-slate-900">Supervisión 360</span>
+      </div>
+      <button onclick="toggleSidebar()" class="lg:hidden text-slate-400"><i data-feather="x"></i></button>
+    </div>
+
+    <!-- Perfil del Usuario Activo -->
+    <div class="p-4 border-b border-slate-100 bg-slate-50 flex items-center space-x-3">
+      <div class="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-slate-500 shrink-0"><i data-feather="user"></i></div>
+      <div class="truncate flex-1">
+        <p id="user-name" class="text-sm font-bold text-slate-800 truncate">Usuario</p>
+        <p id="user-role" class="text-[11px] font-semibold uppercase tracking-wider text-indigo-600">Rol</p>
+      </div>
+    </div>
+
+    <!-- Botón de Enrolar Huella / FaceID -->
+    <div class="p-3 border-b border-slate-100 bg-indigo-50/50">
+      <button onclick="vincularBiometriaDispositivo()" class="w-full text-xs font-bold text-indigo-700 hover:text-indigo-900 flex items-center justify-center gap-2 py-2 px-3 bg-white hover:bg-indigo-50 rounded-xl border border-indigo-200 shadow-sm transition">
+        <i data-feather="fingerprint" class="w-4 h-4 text-indigo-600"></i> Vincular Huella a este equipo
+      </button>
+    </div>
+
+    <!-- Navegación Dinámica -->
+    <nav class="flex-1 overflow-y-auto py-3">
+      <div class="px-5 mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">Dirección y Reportes</div>
+      <ul id="menu-dashboard" class="space-y-1 mb-4"></ul>
+
+      <div class="px-5 mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">Módulos de Seguridad</div>
+      <ul id="menu-modulos" class="space-y-1"></ul>
+      
+      <div id="menu-admin-seccion" class="hidden mt-6">
+        <div class="px-5 mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">Configuración</div>
+        <ul class="space-y-1">
+          <li>
+            <a href="javascript:void(0)" onclick="abrirAdminUsuarios(this)" class="nav-item flex items-center px-5 py-3 text-sm font-medium text-slate-700">
+              <i data-feather="users" class="w-4 h-4 mr-3 text-slate-400"></i> Gestión de Usuarios
+            </a>
+          </li>
+        </ul>
+      </div>
+    </nav>
+  </aside>
+
+  <!-- CONTENIDO PRINCIPAL -->
+  <main class="flex-1 flex flex-col h-screen overflow-hidden w-full relative">
+    <header class="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 lg:px-6 z-10 shrink-0">
+      <div class="flex items-center space-x-3">
+        <button onclick="toggleSidebar()" class="lg:hidden p-2 rounded-lg bg-slate-100 text-slate-600"><i data-feather="menu"></i></button>
+        <h1 id="titulo-modulo" class="text-base lg:text-lg font-bold text-slate-800">Cargando...</h1>
+      </div>
+      <button onclick="salir()" class="text-xs font-semibold text-slate-400 hover:text-slate-600 flex items-center gap-1">
+        <i data-feather="log-out" class="w-3.5 h-3.5"></i> Salir
+      </button>
+    </header>
+
+    <div class="flex-1 overflow-y-auto p-4 lg:p-6 pb-28 space-y-5 bg-slate-50">
+      
+      <!-- BARRA DE FILTROS TEMPORALES -->
+      <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+        <div class="flex flex-col lg:flex-row justify-between lg:items-center gap-3">
+          <div class="flex bg-slate-100 p-1 rounded-xl text-xs font-semibold">
+            <button onclick="seleccionarModoFecha('dia', this)" class="btn-modo px-3.5 py-1.5 rounded-lg bg-white text-slate-900 shadow-sm">Día Específico</button>
+            <button onclick="seleccionarModoFecha('semana', this)" class="btn-modo px-3.5 py-1.5 rounded-lg text-slate-600 hover:text-slate-900">Semana (7 días)</button>
+            <button onclick="seleccionarModoFecha('mes', this)" class="btn-modo px-3.5 py-1.5 rounded-lg text-slate-600 hover:text-slate-900">Mes Específico</button>
+            <button onclick="seleccionarModoFecha('todos', this)" id="btn-todo" class="btn-modo px-3.5 py-1.5 rounded-lg text-slate-600 hover:text-slate-900">Histórico Total</button>
+          </div>
+          
+          <div id="filtro-vigilante-container" class="hidden items-center space-x-2">
+            <span class="text-xs font-semibold text-slate-500 whitespace-nowrap">Vigilante:</span>
+            <select id="select-vigilante" onchange="aplicarFiltrosYRenderizar()" class="bg-slate-50 border border-slate-200 text-xs font-medium rounded-lg px-3 py-2 w-full sm:w-60 outline-none"></select>
+          </div>
+        </div>
+
+        <div id="contenedor-fechas" class="pt-2 border-t border-slate-100 flex flex-wrap items-center gap-3 text-xs">
+          <div id="caja-dia" class="flex items-center gap-2">
+            <span class="font-semibold text-slate-600">Fecha a revisar:</span>
+            <input type="date" id="input-dia" onchange="cargarDatosGlobal()" class="border border-slate-200 rounded-lg px-2.5 py-1.5 bg-slate-50 font-medium">
+          </div>
+          <div id="caja-semana" class="hidden items-center gap-2">
+            <span class="font-semibold text-slate-600">Fecha inicial (Lunes):</span>
+            <input type="date" id="input-semana" onchange="cargarDatosGlobal()" class="border border-slate-200 rounded-lg px-2.5 py-1.5 bg-slate-50 font-medium">
+            <span id="badge-rango-semana" class="px-2 py-1 bg-indigo-50 text-indigo-700 font-semibold rounded-md border border-indigo-100"></span>
+          </div>
+          <div id="caja-mes" class="hidden items-center gap-2">
+            <span class="font-semibold text-slate-600">Mes a revisar:</span>
+            <input type="month" id="input-mes" onchange="cargarDatosGlobal()" class="border border-slate-200 rounded-lg px-2.5 py-1.5 bg-slate-50 font-medium">
+          </div>
+          <div id="caja-todos-texto" class="hidden text-slate-400 italic">
+            Visualizando todo el histórico global (Agrupado por Mes).
+          </div>
+        </div>
+      </div>
+
+      <!-- LOADER -->
+      <div id="loader" class="text-center py-20 text-slate-400 hidden">
+        <i data-feather="loader" class="animate-spin w-8 h-8 mx-auto mb-2 text-indigo-600"></i>
+        <p class="text-sm font-medium">Consultando bases de datos en tiempo real...</p>
+      </div>
+
+      <!-- ================= VISTA: DASHBOARD CONSOLIDADO ================= -->
+      <div id="vista-dashboard" class="space-y-5 hidden">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          
+          <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
+            <div class="w-12 h-12 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600 shrink-0"><i data-feather="compass"></i></div>
+            <div>
+              <p class="text-xs text-slate-400 font-bold uppercase tracking-wider">Rondines Registrados</p>
+              <div class="flex items-end gap-2 mt-0.5">
+                <h3 id="dash-ron" class="text-2xl font-black text-slate-900">0</h3>
+                <span id="dash-ron-meta" class="text-xs font-semibold text-slate-500 mb-1">/ Meta 0</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
+            <div class="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600 shrink-0"><i data-feather="users"></i></div>
+            <div>
+              <p class="text-xs text-slate-400 font-bold uppercase tracking-wider">Volumen de Accesos</p>
+              <h3 id="dash-acc" class="text-2xl font-black text-slate-900 mt-0.5">0</h3>
+            </div>
+          </div>
+
+          <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
+            <div class="w-12 h-12 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600 shrink-0"><i data-feather="truck"></i></div>
+            <div>
+              <p class="text-xs text-slate-400 font-bold uppercase tracking-wider">Rutas Despachadas</p>
+              <h3 id="dash-rut" class="text-2xl font-black text-slate-900 mt-0.5">0</h3>
+            </div>
+          </div>
+
+          <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
+            <div class="w-12 h-12 rounded-xl bg-amber-50 flex items-center justify-center text-amber-600 shrink-0"><i data-feather="package"></i></div>
+            <div>
+              <p class="text-xs text-slate-400 font-bold uppercase tracking-wider">Salidas de Bienes</p>
+              <h3 id="dash-sal" class="text-2xl font-black text-slate-900 mt-0.5">0</h3>
+            </div>
+          </div>
+
+          <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4 border-l-4 border-l-rose-500">
+            <div class="w-12 h-12 rounded-xl bg-rose-50 flex items-center justify-center text-rose-600 shrink-0"><i data-feather="alert-octagon"></i></div>
+            <div>
+              <p class="text-xs text-slate-400 font-bold uppercase tracking-wider">Incidencias Reportadas</p>
+              <h3 id="dash-inc" class="text-2xl font-black text-rose-700 mt-0.5">0</h3>
+            </div>
+          </div>
+
+          <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
+            <div class="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600 shrink-0"><i data-feather="lock"></i></div>
+            <div>
+              <p class="text-xs text-slate-400 font-bold uppercase tracking-wider">Inspecciones de Cierre</p>
+              <h3 id="dash-cie" class="text-2xl font-black text-slate-900 mt-0.5">0</h3>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-center gap-6">
+          <div class="w-full md:w-1/2 relative h-64"><canvas id="grafico-dona"></canvas></div>
+          <div class="w-full md:w-1/2 space-y-3">
+             <h3 class="font-bold text-slate-800 text-lg">Distribución de Carga Operativa</h3>
+             <p class="text-sm text-slate-500 leading-relaxed">
+               Este gráfico consolida la totalidad de actividades registradas por la vigilancia en el periodo establecido. Permite corroborar el cumplimiento del patrullaje obligatorio contra el flujo regular de la instalación.
+             </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= VISTA: MÓDULOS ESPECÍFICOS ================= -->
+      <div id="vista-modulo" class="space-y-5 hidden">
+        
+        <div id="contenedor-ranking" class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <p class="text-[11px] uppercase tracking-wider text-slate-400 font-bold">Total Registros</p>
+            <h3 id="kpi-total" class="text-2xl font-black text-indigo-600 mt-0.5">--</h3>
+          </div>
+          <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm truncate">
+            <p class="text-[11px] uppercase tracking-wider text-slate-400 font-bold">Líder Asistencia</p>
+            <h3 id="kpi-top-dias" class="text-sm font-bold text-slate-800 truncate mt-0.5">--</h3>
+            <p id="kpi-top-dias-sub" class="text-xs text-slate-500">--</p>
+          </div>
+          <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm truncate">
+            <p class="text-[11px] uppercase tracking-wider text-slate-400 font-bold">Mayor Promedio / Día</p>
+            <h3 id="kpi-top-promedio" class="text-sm font-bold text-slate-800 truncate mt-0.5">--</h3>
+            <p id="kpi-top-promedio-sub" class="text-xs text-emerald-600 font-semibold">--</p>
+          </div>
+          <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <p class="text-[11px] uppercase tracking-wider text-slate-400 font-bold">Días Operados</p>
+            <h3 id="kpi-dias-operados" class="text-2xl font-black text-slate-700 mt-0.5">--</h3>
+          </div>
+        </div>
+        
+        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+          <div class="flex justify-between items-center">
+            <h3 id="titulo-grafico-barras" class="font-bold text-sm text-slate-800 flex items-center gap-2">
+              <i data-feather="bar-chart-2" class="w-4 h-4 text-indigo-600"></i> Distribución de Actividad
+            </h3>
+          </div>
+          <div class="relative h-64 w-full"><canvas id="grafico-actividad"></canvas></div>
+        </div>
+        
+        <div class="space-y-3">
+          <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2">
+            <h3 class="font-bold text-sm text-slate-800">Bitácora Detallada</h3>
+            <div class="relative w-full sm:w-64">
+              <i data-feather="search" class="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400"></i>
+              <input id="input-busqueda" oninput="filtrarPorTexto()" type="text" placeholder="Buscar folio, guardia, detalle..." class="w-full pl-8 pr-3 py-1.5 border border-slate-200 rounded-lg text-xs bg-white outline-none focus:ring-2 focus:ring-indigo-500">
+            </div>
+          </div>
+
+          <div id="lista-tarjetas" class="space-y-3"></div>
+        </div>
+
+      </div>
+
+      <!-- ================= VISTA: ADMINISTRACIÓN DE USUARIOS ================= -->
+      <div id="vista-admin" class="space-y-5 hidden">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+          <div>
+            <h2 class="text-lg font-bold text-slate-800">Control de Usuarios y Permisos</h2>
+            <p class="text-xs text-slate-500 mt-0.5">Define qué módulos puede consultar cada supervisor o vigilante.</p>
+          </div>
+          <button onclick="abrirModalUsuario()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-xs font-semibold hover:bg-indigo-700 transition flex items-center gap-1.5 shadow-sm">
+            <i data-feather="user-plus" class="w-4 h-4"></i> Nuevo Usuario
+          </button>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-slate-50 text-slate-500 uppercase font-semibold border-b border-slate-100">
+                <tr>
+                  <th class="px-5 py-3.5">Usuario</th>
+                  <th class="px-5 py-3.5">Rol</th>
+                  <th class="px-5 py-3.5">Módulos Asignados</th>
+                  <th class="px-5 py-3.5 text-right">Acción</th>
+                </tr>
+              </thead>
+              <tbody id="tabla-usuarios" class="divide-y divide-slate-100 text-slate-700 font-medium"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- ================= LIGHTBOX (VIDEOS) ================= -->
+  <div id="lightbox" class="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 hidden">
+    <div class="bg-slate-900 rounded-2xl w-full max-w-4xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden border border-slate-800">
+      <div class="flex justify-between items-center px-5 py-3.5 border-b border-slate-800 text-white">
+        <span id="lb-titulo" class="font-semibold text-sm">Grabación / Evidencia del Recorrido</span>
+        <div class="flex items-center space-x-4">
+          <a id="lb-link" href="#" target="_blank" class="text-xs text-indigo-400 hover:text-indigo-300 underline flex items-center gap-1">
+            Drive <i data-feather="external-link" class="w-3 h-3"></i>
+          </a>
+          <button onclick="cerrarLightbox()" class="text-slate-400 hover:text-white p-1 rounded-lg">
+            <i data-feather="x" class="w-5 h-5"></i>
+          </button>
+        </div>
+      </div>
+      <div class="relative bg-black flex-1 min-h-[380px] lg:min-h-[500px]">
+        <iframe id="lb-frame" class="w-full h-full absolute inset-0" frameborder="0" allow="autoplay; fullscreen" allowfullscreen></iframe>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= MODAL EDICIÓN USUARIO ================= -->
+  <div id="modal-usuario" class="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden border border-slate-200">
+      <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
+        <h3 class="font-bold text-slate-800 text-sm">Asignar Permisos de Usuario</h3>
+        <button onclick="cerrarModalUsuario()" class="text-slate-400 hover:text-slate-600"><i data-feather="x" class="w-4 h-4"></i></button>
+      </div>
+      <div class="p-6 space-y-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Correo Electrónico</label>
+          <input type="email" id="form-correo" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-indigo-500">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Nombre Completo</label>
+          <input type="text" id="form-nombre" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-indigo-500">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Rol</label>
+          <select id="form-rol" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs outline-none">
+            <option>Supervisor</option>
+            <option>Gerente</option>
+            <option>Vigilante</option>
+            <option>Admin</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-600 uppercase mb-2">Módulos Autorizados</label>
+          <div class="grid grid-cols-2 gap-2 text-xs text-slate-700" id="lista-checks">
+            <label class="flex items-center space-x-2"><input type="checkbox" value="Dashboard" class="rounded text-indigo-600 focus:ring-indigo-500"> <span>Dashboard</span></label>
+            <label class="flex items-center space-x-2"><input type="checkbox" value="REG_Rondines" class="rounded text-indigo-600"> <span>Rondines</span></label>
+            <label class="flex items-center space-x-2"><input type="checkbox" value="REG_Control_Accesos" class="rounded text-indigo-600"> <span>Control Accesos</span></label>
+            <label class="flex items-center space-x-2"><input type="checkbox" value="REG_Unidades_Rutas" class="rounded text-indigo-600"> <span>Rutas Unidades</span></label>
+            <label class="flex items-center space-x-2"><input type="checkbox" value="REG_Salida_Bienes" class="rounded text-indigo-600"> <span>Salida Bienes</span></label>
+            <label class="flex items-center space-x-2"><input type="checkbox" value="REG_Incidencias" class="rounded text-indigo-600"> <span>Incidencias</span></label>
+            <label class="flex items-center space-x-2"><input type="checkbox" value="REG_Cierre_Seguro" class="rounded text-indigo-600"> <span>Cierre Seguro</span></label>
+          </div>
+        </div>
+      </div>
+      <div class="bg-slate-50 px-6 py-3.5 flex justify-end">
+        <button onclick="guardarUsuario()" id="btn-guarda-usr" class="bg-indigo-600 text-white px-5 py-2 rounded-lg text-xs font-semibold hover:bg-indigo-700 transition">
+          Guardar Permisos
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    feather.replace();
+
+    // =========================================================================
+    // CONFIGURACIÓN API GOOGLE APPS SCRIPT
+    // =========================================================================
+    const URL_BACKEND_APPSCRIPT = "TU_URL_DE_APPSCRIPT_AQUI"; // Pega tu URL /exec de Google Apps Script
+
+    async function llamarAPI(accion, payload = {}) {
+      const token = sessionStorage.getItem("tok") || "";
+      const respuesta = await fetch(URL_BACKEND_APPSCRIPT, {
+        method: "POST",
+        mode: "cors",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ accion: accion, payload: payload, token: token })
+      });
+      const res = await respuesta.json();
+      if (!res.exito) throw new Error(res.mensaje);
+      return res.datos;
+    }
+
+    let usuarioActivo = null;
+    let moduloActual = 'Dashboard';
+    let modoFechaActual = 'dia';
+    let registrosTodos = [], registrosFiltrados = [];
+    let chartBar = null, chartDona = null;
+
+    const DICT_MODULOS = {
+      'Dashboard': { icono: 'pie-chart', titulo: 'Dashboard General' },
+      'REG_Rondines': { icono: 'compass', titulo: 'Supervisión de Rondines' },
+      'REG_Control_Accesos': { icono: 'users', titulo: 'Control de Accesos' },
+      'REG_Unidades_Rutas': { icono: 'truck', titulo: 'Rutas de Unidades' },
+      'REG_Salida_Bienes': { icono: 'package', titulo: 'Salida de Bienes' },
+      'REG_Incidencias': { icono: 'alert-octagon', titulo: 'Registro de Incidencias' },
+      'REG_Cierre_Seguro': { icono: 'lock', titulo: 'Cierre Seguro' }
+    };
+
+    // ================= BIOMETRÍA WEBAUTHN =================
+    function base64UrlToUint8Array(base64Url) {
+      const padding = '='.repeat((4 - base64Url.length % 4) % 4);
+      const base64 = (base64Url + padding).replace(/-/g, '+').replace(/_/g, '/');
+      const rawData = window.atob(base64);
+      const outputArray = new Uint8Array(rawData.length);
+      for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
+      return outputArray;
+    }
+
+    async function revisarSoporteBiometrico() {
+      try {
+        if (window.PublicKeyCredential && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()) {
+          const credId = localStorage.getItem("seg_bio_cred");
+          const savedTok = localStorage.getItem("seg_bio_tok");
+          if (credId && savedTok) {
+            document.getElementById("cajaBiometriaLogin").classList.remove("hidden");
+            const nombreGuardado = localStorage.getItem("seg_bio_nombre");
+            if (nombreGuardado) {
+              document.getElementById("btnEntrarBioTexto").innerText = `Entrar como ${nombreGuardado.split(' ')[0]} (Huella / FaceID)`;
+            }
+          }
+        }
+      } catch(e) {}
+    }
+
+    async function vincularBiometriaDispositivo() {
+      if (!window.PublicKeyCredential) return alert("Dispositivo sin soporte biométrico WebAuthn.");
+      if (!usuarioActivo) return alert("Inicia sesión primero para vincular tu huella.");
+
+      try {
+        const challenge = new Uint8Array(32);
+        window.crypto.getRandomValues(challenge);
+
+        const credencial = await navigator.credentials.create({
+          publicKey: {
+            challenge: challenge,
+            rp: { name: "Supervisión 360", id: window.location.hostname },
+            user: {
+              id: new TextEncoder().encode(usuarioActivo.correo || "USR"),
+              name: usuarioActivo.correo || "usuario@seguridad.com",
+              displayName: usuarioActivo.nombre || "Usuario"
+            },
+            pubKeyCredParams: [{ alg: -7, type: "public-key" }, { alg: -257, type: "public-key" }],
+            authenticatorSelection: { 
+              authenticatorAttachment: "platform", 
+              userVerification: "required", 
+              residentKey: "required", 
+              requireResidentKey: true 
+            },
+            timeout: 60000
+          }
+        });
+
+        if (credencial) {
+          localStorage.setItem("seg_bio_cred", credencial.id);
+          localStorage.setItem("seg_bio_tok", sessionStorage.getItem("tok"));
+          localStorage.setItem("seg_bio_nombre", usuarioActivo.nombre);
+          localStorage.setItem("seg_bio_correo", usuarioActivo.correo);
+          alert("✅ ¡Huella / Face ID vinculada con éxito en este equipo!");
+          revisarSoporteBiometrico();
+        }
+      } catch (err) {
+        alert("No se pudo vincular la biometría: " + err.message);
+      }
+    }
+
+    async function ingresarConBiometria() {
+      const btn = document.getElementById("btnEntrarBio");
+      try {
+        const credId = localStorage.getItem("seg_bio_cred");
+        const tokenGuardado = localStorage.getItem("seg_bio_tok");
+        if (!credId || !tokenGuardado) return alert("No hay huella registrada en este equipo.");
+
+        const challenge = new Uint8Array(32);
+        window.crypto.getRandomValues(challenge);
+        const credIdBuffer = base64UrlToUint8Array(credId);
+
+        btn.disabled = true;
+        btn.innerHTML = `<i data-feather="loader" class="animate-spin w-4 h-4 inline mr-2"></i> Tocando sensor...`;
+        feather.replace();
+
+        const assertion = await navigator.credentials.get({
+          publicKey: {
+            challenge: challenge,
+            rpId: window.location.hostname,
+            allowCredentials: [{ id: credIdBuffer, type: "public-key", transports: ["internal"] }],
+            userVerification: "required"
+          }
+        });
+
+        if (assertion) {
+          sessionStorage.setItem("tok", tokenGuardado);
+          btn.innerHTML = `<i data-feather="check" class="w-4 h-4 inline mr-2"></i> Validando...`;
+          feather.replace();
+          await iniciarApp();
+        }
+      } catch (err) {
+        btn.disabled = false;
+        btn.innerHTML = `<i data-feather="fingerprint" class="w-5 h-5 text-indigo-400"></i> <span id="btnEntrarBioTexto">Entrar con Huella / FaceID</span>`;
+        feather.replace();
+        alert("Autenticación biométrica cancelada o no reconocida: " + err.message);
+      }
+    }
+
+    // ================= ACCESO OTP (CORREO) =================
+    async function pedirCod() {
+      const e = document.getElementById("email").value.trim();
+      if (!e) return document.getElementById("msgLog").innerText = "Ingresa tu correo registrado.";
+      document.getElementById("msgLog").innerText = "Verificando cuenta...";
+      document.getElementById("btnSolicitarCod").disabled = true;
+
+      try {
+        const r = await llamarAPI("solicitarCodigoAcceso", { email: e });
+        document.getElementById("btnSolicitarCod").disabled = false;
+        document.getElementById("msgLog").innerText = r.mensaje;
+        if (r.correcto) {
+          document.getElementById("p1").classList.add("hidden"); 
+          document.getElementById("p2").classList.remove("hidden");
+        }
+      } catch (err) {
+        document.getElementById("btnSolicitarCod").disabled = false;
+        document.getElementById("msgLog").innerText = "Error: " + err.message;
+      }
+    }
+
+    async function login() {
+      document.getElementById("msgLog").innerText = "Validando código...";
+      document.getElementById("btnVerificarCod").disabled = true;
+
+      try {
+        const r = await llamarAPI("verificarCodigoAcceso", { email: document.getElementById("email").value, codigo: document.getElementById("codigo").value });
+        document.getElementById("btnVerificarCod").disabled = false;
+        if (r.correcto) {
+          sessionStorage.setItem("tok", r.token);
+          if (localStorage.getItem("seg_bio_cred")) localStorage.setItem("seg_bio_tok", r.token);
+          await iniciarApp();
+        }
+      } catch (err) {
+        document.getElementById("btnVerificarCod").disabled = false;
+        document.getElementById("msgLog").innerText = "Error: " + err.message;
+      }
+    }
+
+    function resetLogin() {
+      document.getElementById("p2").classList.add("hidden");
+      document.getElementById("p1").classList.remove("hidden");
+      document.getElementById("codigo").value = "";
+      document.getElementById("msgLog").innerText = "";
+    }
+
+    function salir() {
+      sessionStorage.removeItem("tok");
+      location.reload();
+    }
+
+    // ================= INICIALIZACIÓN DE LA APLICACIÓN =================
+    async function iniciarApp() {
+      const t = sessionStorage.getItem("tok");
+      if (!t) return;
+      document.getElementById("loginView").classList.add("hidden");
+
+      try {
+        const res = await llamarAPI("validarSesion");
+        usuarioActivo = res.usuario;
+        
+        document.getElementById("user-name").innerText = usuarioActivo.nombre;
+        document.getElementById("user-role").innerText = usuarioActivo.rol;
+
+        const menuDash = document.getElementById("menu-dashboard");
+        const menuMods = document.getElementById("menu-modulos");
+        menuDash.innerHTML = "";
+        menuMods.innerHTML = "";
+
+        let primerModulo = null;
+        let tieneDashboard = usuarioActivo.modulos.some(m => m.trim() === 'Dashboard');
+
+        if (tieneDashboard) {
+          primerModulo = 'Dashboard';
+          menuDash.innerHTML = `<li><a href="javascript:void(0)" onclick="cambiarModulo('Dashboard', 'Resumen General Consolidado', this)" class="nav-item active-nav flex items-center px-5 py-3 text-sm font-medium text-slate-700"><i data-feather="pie-chart" class="w-4 h-4 mr-3 text-slate-400"></i> Dashboard General</a></li>`;
+        }
+
+        usuarioActivo.modulos.forEach(m => {
+          let clave = m.trim();
+          if (clave !== 'Dashboard' && DICT_MODULOS[clave]) {
+            if (!primerModulo) primerModulo = clave;
+            menuMods.innerHTML += `<li><a href="javascript:void(0)" onclick="cambiarModulo('${clave}', '${DICT_MODULOS[clave].titulo}', this)" class="nav-item flex items-center px-5 py-3 text-sm font-medium text-slate-700"><i data-feather="${DICT_MODULOS[clave].icono}" class="w-4 h-4 mr-3 text-slate-400"></i> ${DICT_MODULOS[clave].titulo.replace('Supervisión de ', '')}</a></li>`;
+          }
+        });
+
+        if (usuarioActivo.rol.toLowerCase() === 'admin') {
+          document.getElementById("menu-admin-seccion").classList.remove("hidden");
+        }
+
+        feather.replace();
+
+        let d = new Date();
+        document.getElementById("input-dia").value = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+        document.getElementById("input-mes").value = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+
+        if (primerModulo) {
+          let elemento = primerModulo === 'Dashboard' ? menuDash.firstElementChild.firstElementChild : menuMods.firstElementChild.firstElementChild;
+          cambiarModulo(primerModulo, DICT_MODULOS[primerModulo].titulo, elemento);
+        }
+      } catch (err) {
+        sessionStorage.removeItem("tok");
+        document.getElementById("loginView").classList.remove("hidden");
+        document.getElementById("msgLog").innerText = err.message;
+      }
+    }
+
+    function toggleSidebar() { 
+      document.getElementById("sidebar").classList.toggle("-translate-x-full"); 
+      document.getElementById("mobile-overlay").classList.toggle("hidden"); 
+    }
+
+    function cambiarModulo(id, titulo, elem) {
+      moduloActual = id;
+      document.getElementById("titulo-modulo").innerText = titulo;
+      document.querySelectorAll(".nav-item").forEach(el => el.classList.remove("active-nav"));
+      if (elem) elem.classList.add("active-nav");
+      
+      document.getElementById("vista-admin").classList.add("hidden");
+      
+      if (id === 'Dashboard') {
+        document.getElementById("vista-dashboard").classList.remove("hidden");
+        document.getElementById("vista-modulo").classList.add("hidden");
+        document.getElementById("filtro-vigilante-container").classList.add("hidden");
+        document.getElementById("btn-todo").classList.add("hidden");
+        if (modoFechaActual === 'todos') seleccionarModoFecha('dia', document.querySelector(".btn-modo"));
+      } else {
+        document.getElementById("vista-dashboard").classList.add("hidden");
+        document.getElementById("vista-modulo").classList.remove("hidden");
+        document.getElementById("filtro-vigilante-container").classList.remove("hidden");
+        document.getElementById("btn-todo").classList.remove("hidden");
+      }
+
+      if (window.innerWidth < 1024) toggleSidebar();
+      cargarDatosGlobal();
+    }
+
+    function seleccionarModoFecha(modo, btn) {
+      modoFechaActual = modo;
+      document.querySelectorAll(".btn-modo").forEach(b => b.className = "btn-modo px-3.5 py-1.5 rounded-lg text-slate-600 hover:text-slate-900");
+      btn.className = "btn-modo px-3.5 py-1.5 rounded-lg bg-white text-slate-900 shadow-sm";
+
+      ['dia','semana','mes','todos-texto'].forEach(id => document.getElementById(`caja-${id}`).classList.add("hidden"));
+      if (modo !== 'todos') document.getElementById(`caja-${modo}`).classList.remove("hidden");
+      else document.getElementById("caja-todos-texto").classList.remove("hidden");
+
+      if (modo === 'semana') {
+        let f = document.getElementById("input-semana").value;
+        if (f) {
+           let dt = new Date(f.split('-')[0], f.split('-')[1]-1, f.split('-')[2]);
+           let d6 = new Date(dt); d6.setDate(d6.getDate()+6);
+           document.getElementById("badge-rango-semana").innerText = `Al ${d6.getFullYear()}-${String(d6.getMonth()+1).padStart(2,'0')}-${String(d6.getDate()).padStart(2,'0')}`;
+        }
+      }
+      cargarDatosGlobal();
+    }
+
+    async function cargarDatosGlobal() {
+      document.getElementById("loader").classList.remove("hidden");
+      if (moduloActual === 'Dashboard') document.getElementById("vista-dashboard").classList.add("hidden");
+      else document.getElementById("vista-modulo").classList.add("hidden");
+
+      let valFecha = modoFechaActual === 'dia' ? document.getElementById("input-dia").value : 
+                     modoFechaActual === 'semana' ? document.getElementById("input-semana").value : 
+                     modoFechaActual === 'mes' ? document.getElementById("input-mes").value : null;
+
+      try {
+        if (moduloActual === 'Dashboard') {
+          const res = await llamarAPI("obtenerDashboardConsolidado", { periodo: modoFechaActual, fechaFiltroStr: valFecha });
+          renderizarDashboard(res);
+        } else {
+          const res = await llamarAPI("obtenerDatosModulo", { modulo: moduloActual });
+          document.getElementById("loader").classList.add("hidden");
+          document.getElementById("vista-modulo").classList.remove("hidden");
+          registrosTodos = res.datos || [];
+          
+          let sel = document.getElementById("select-vigilante");
+          sel.innerHTML = '<option value="">Todos los Vigilantes</option>';
+          (res.guardias || []).forEach(g => sel.innerHTML += `<option value="${g}">${g}</option>`);
+          
+          aplicarFiltrosYRenderizar();
+        }
+      } catch(err) {
+        document.getElementById("loader").classList.add("hidden");
+        alert("Error al cargar datos: " + err.message);
+      }
+    }
+
+    function renderizarDashboard(res) {
+      document.getElementById("loader").classList.add("hidden");
+      document.getElementById("vista-dashboard").classList.remove("hidden");
+      if (res.error) return;
+
+      const d = res.datos;
+      document.getElementById("dash-ron").innerText = d.rondines;
+      document.getElementById("dash-ron-meta").innerText = `/ Meta >= ${res.meta}`;
+      document.getElementById("dash-ron").className = (d.rondines >= res.meta) ? "text-2xl font-black text-emerald-600" : "text-2xl font-black text-rose-600";
+      
+      document.getElementById("dash-acc").innerText = d.accesos;
+      document.getElementById("dash-rut").innerText = d.unidades;
+      document.getElementById("dash-sal").innerText = d.bienes;
+      document.getElementById("dash-inc").innerText = d.incidencias;
+      document.getElementById("dash-cie").innerText = d.cierres;
+
+      if (chartDona) chartDona.destroy();
+      chartDona = new Chart(document.getElementById("grafico-dona").getContext('2d'), {
+        type: 'doughnut',
+        data: {
+          labels: ['Rondines', 'Accesos', 'Rutas', 'Bienes', 'Incidencias', 'Cierre Seguro'],
+          datasets: [{ data: [d.rondines, d.accesos, d.unidades, d.bienes, d.incidencias, d.cierres], backgroundColor: ['#4f46e5', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#64748b'] }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } } }
+      });
+    }
+
+    function aplicarFiltrosYRenderizar() {
+      let vig = document.getElementById("select-vigilante").value;
+      registrosFiltrados = registrosTodos;
+
+      if (modoFechaActual !== 'todos') {
+        let valFecha = modoFechaActual === 'dia' ? document.getElementById("input-dia").value : 
+                       modoFechaActual === 'semana' ? document.getElementById("input-semana").value : 
+                       document.getElementById("input-mes").value;
+        
+        if (valFecha) {
+          if (modoFechaActual === 'dia') registrosFiltrados = registrosTodos.filter(r => r.fecha === valFecha);
+          if (modoFechaActual === 'semana') {
+            let dt = new Date(valFecha.split('-')[0], valFecha.split('-')[1]-1, valFecha.split('-')[2]);
+            let fS = [];
+            for (let i = 0; i < 7; i++) {
+              let nd = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate() + i);
+              fS.push(`${nd.getFullYear()}-${String(nd.getMonth()+1).padStart(2,'0')}-${String(nd.getDate()).padStart(2,'0')}`);
+            }
+            registrosFiltrados = registrosTodos.filter(r => fS.includes(r.fecha));
+          }
+          if (modoFechaActual === 'mes') registrosFiltrados = registrosTodos.filter(r => r.fecha && r.fecha.startsWith(valFecha));
+        }
+      }
+
+      if (vig) registrosFiltrados = registrosFiltrados.filter(r => r.responsable === vig);
+      
+      document.getElementById("kpi-total").innerText = registrosFiltrados.length;
+      
+      const stats = {}; 
+      const dS = new Set();
+      registrosFiltrados.forEach(r => {
+        if (r.responsable && !['Guardia no registrado','Guardia','Personal','N/D'].includes(r.responsable)) {
+          if (!stats[r.responsable]) stats[r.responsable] = { t:0, d:new Set() };
+          stats[r.responsable].t++; 
+          stats[r.responsable].d.add(r.fecha); 
+          dS.add(r.fecha);
+        }
+      });
+      document.getElementById("kpi-dias-operados").innerText = dS.size;
+      
+      let arr = Object.keys(stats).map(g => ({ g: g, d: stats[g].d.size, t: stats[g].t, p: stats[g].d.size > 0 ? stats[g].t / stats[g].d.size : 0 }));
+      if (arr.length > 0) {
+        let topD = [...arr].sort((a,b) => b.d - a.d)[0]; 
+        document.getElementById("kpi-top-dias").innerText = topD.g; 
+        document.getElementById("kpi-top-dias-sub").innerText = `${topD.d} días activos (${topD.t} regs)`;
+        
+        let topP = [...arr].sort((a,b) => b.p - a.p)[0]; 
+        document.getElementById("kpi-top-promedio").innerText = topP.g; 
+        document.getElementById("kpi-top-promedio-sub").innerText = `${topP.p.toFixed(2)} regs / día`;
+      } else {
+        document.getElementById("kpi-top-dias").innerText = '--'; document.getElementById("kpi-top-dias-sub").innerText = '--';
+        document.getElementById("kpi-top-promedio").innerText = '--'; document.getElementById("kpi-top-promedio-sub").innerText = '--';
+      }
+
+      if (chartBar) chartBar.destroy();
+      let labels = [], data = [], tituloEje = "Registros";
+
+      if (modoFechaActual === 'dia') {
+        tituloEje = "Distribución por Turno";
+        let t = {}; 
+        registrosFiltrados.forEach(r => { let tx = r.turno || 'Matutino'; t[tx] = (t[tx] || 0) + 1; });
+        labels = Object.keys(t); data = Object.values(t);
+      } else if (modoFechaActual === 'semana' || modoFechaActual === 'mes') {
+        tituloEje = "Volumen Diario";
+        let dts = {}; 
+        registrosFiltrados.forEach(r => { if(r.fecha) dts[r.fecha] = (dts[r.fecha] || 0) + 1; });
+        labels = Object.keys(dts).sort(); data = labels.map(l => dts[l]);
+        labels = labels.map(l => l.slice(8));
+      } else {
+        tituloEje = "Volumen Mensual Histórico";
+        let m = {}; 
+        registrosFiltrados.forEach(r => { 
+          if (r.fecha) {
+            let mesStr = r.fecha.substring(0,7);
+            m[mesStr] = (m[mesStr] || 0) + 1; 
+          }
+        });
+        labels = Object.keys(m).sort(); data = labels.map(l => m[l]);
+      }
+
+      document.getElementById("titulo-grafico-barras").innerHTML = `<i data-feather="bar-chart-2" class="w-4 h-4 text-indigo-600"></i> ${tituloEje}`;
+      feather.replace();
+
+      chartBar = new Chart(document.getElementById("grafico-actividad").getContext('2d'), {
+        type: 'bar', 
+        data: { 
+          labels: labels, 
+          datasets: [{ label: 'Volumen', data: data, backgroundColor: '#4f46e5', borderRadius: 4, hoverBackgroundColor: '#4338ca' }] 
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+      });
+
+      filtrarPorTexto();
+    }
+
+    function filtrarPorTexto() {
+      const q = document.getElementById("input-busqueda").value.toLowerCase().trim();
+      let arr = q ? registrosFiltrados.filter(i => (i.folio + i.titulo + i.subtitulo + i.responsable + (i.alerta || '')).toLowerCase().includes(q)) : registrosFiltrados;
+      
+      const c = document.getElementById("lista-tarjetas"); 
+      c.innerHTML = '';
+
+      if (arr.length === 0) {
+        c.innerHTML = '<div class="p-8 text-center text-slate-400 bg-white rounded-xl border border-slate-200">No se encontraron registros en este periodo.</div>';
+        return;
+      }
+
+      arr.forEach(i => {
+        let esAlerta = i.alerta !== null || i.estatus.toLowerCase().includes('hallazgo') || i.estatus.toLowerCase().includes('no cumple') || i.estatus.toLowerCase().includes('crítico');
+        let bgBadge = esAlerta ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200';
+        let bdrCard = esAlerta ? 'border-l-4 border-l-rose-500' : 'border-slate-200';
+        
+        let btnEvidencia = '';
+        if (i.evidencia.tipo === 'video') {
+          btnEvidencia = `<button onclick="abrirLightbox('${i.evidencia.urlPreview}', '${i.folio} - ${i.responsable}', '${i.evidencia.urlOriginal}')" class="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg text-xs flex items-center gap-1 shadow-sm transition"><i data-feather="play-circle" class="w-3.5 h-3.5"></i> Ver Video</button>`;
+        } else if (i.evidencia.tipo === 'carpeta') {
+          btnEvidencia = `<a href="${i.evidencia.urlOriginal}" target="_blank" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-900 text-white font-medium rounded-lg text-xs flex items-center gap-1 transition"><i data-feather="folder" class="w-3.5 h-3.5"></i> Drive</a>`;
+        }
+
+        c.innerHTML += `
+          <div class="bg-white p-4 rounded-xl border ${bdrCard} shadow-sm hover:shadow transition-shadow space-y-2">
+            <div class="flex justify-between items-start">
+               <div>
+                 <span class="font-bold text-sm text-slate-900">${i.folio}</span> 
+                 <span class="text-xs text-slate-400 ml-1.5">• ${i.fecha} ${i.turno ? '('+i.turno+')' : ''}</span>
+               </div>
+               <div class="flex gap-2 items-center">
+                 <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold border ${bgBadge}">${i.estatus}</span>
+                 ${btnEvidencia}
+               </div>
+            </div>
+            <h4 class="text-sm font-semibold text-slate-800">${i.titulo}</h4>
+            <p class="text-xs text-slate-500">${i.subtitulo}</p>
+            <div class="flex flex-col sm:flex-row justify-between sm:items-center mt-2 pt-2 border-t border-slate-100 text-xs text-slate-500 gap-1">
+               <span class="font-medium text-slate-600"><i data-feather="user" class="w-3.5 h-3.5 inline mr-1 text-slate-400"></i> ${i.responsable}</span>
+               ${i.alerta ? `<span class="text-rose-600 font-bold">${i.alerta}</span>` : ''}
+            </div>
+          </div>`;
+      });
+      feather.replace();
+    }
+
+    // ================= ADMINISTRACIÓN DE USUARIOS =================
+    async function abrirAdminUsuarios(elem) {
+      document.querySelectorAll(".nav-item").forEach(el => el.classList.remove("active-nav"));
+      if (elem) elem.classList.add("active-nav");
+      document.getElementById("titulo-modulo").innerText = 'Gestión de Usuarios';
+      document.getElementById("vista-modulo").classList.add("hidden");
+      document.getElementById("vista-dashboard").classList.add("hidden");
+      document.getElementById("vista-admin").classList.remove("hidden");
+      if (window.innerWidth < 1024) toggleSidebar();
+      
+      try {
+        const usrs = await llamarAPI("obtenerListaUsuarios");
+        renderTablaUsuarios(usrs);
+      } catch (err) {
+        alert("Error: " + err.message);
+      }
+    }
+
+    function renderTablaUsuarios(usrs) {
+      const tb = document.getElementById("tabla-usuarios"); 
+      tb.innerHTML = '';
+      usrs.forEach(u => {
+        tb.innerHTML += `
+          <tr class="hover:bg-slate-50 transition">
+            <td class="px-5 py-3.5">
+              <p class="font-bold text-slate-800">${u.nombre}</p>
+              <p class="text-xs text-slate-400">${u.correo}</p>
+            </td>
+            <td class="px-5 py-3.5">
+              <span class="bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-md text-[11px] font-bold uppercase border border-indigo-100">${u.rol}</span>
+            </td>
+            <td class="px-5 py-3.5 text-xs text-slate-500 max-w-[240px] truncate">${u.modulos.join(', ')}</td>
+            <td class="px-5 py-3.5 text-right">
+              <button onclick='editarUsr(${JSON.stringify(u)})' class="text-indigo-600 hover:text-indigo-800 font-semibold text-xs">Editar</button>
+            </td>
+          </tr>`;
+      });
+    }
+
+    function abrirModalUsuario() {
+      document.getElementById("form-correo").value = ''; 
+      document.getElementById("form-nombre").value = ''; 
+      document.getElementById("form-rol").value = 'Supervisor';
+      document.querySelectorAll("#lista-checks input").forEach(c => c.checked = false);
+      document.getElementById("form-correo").disabled = false;
+      document.getElementById("modal-usuario").classList.remove("hidden");
+    }
+    
+    function editarUsr(u) {
+      document.getElementById("form-correo").value = u.correo; 
+      document.getElementById("form-correo").disabled = true;
+      document.getElementById("form-nombre").value = u.nombre; 
+      document.getElementById("form-rol").value = u.rol;
+      document.querySelectorAll("#lista-checks input").forEach(c => c.checked = u.modulos.includes(c.value));
+      document.getElementById("modal-usuario").classList.remove("hidden");
+    }
+
+    function cerrarModalUsuario() { 
+      document.getElementById("modal-usuario").classList.add("hidden"); 
+    }
+
+    async function guardarUsuario() {
+      const mods = []; 
+      document.querySelectorAll("#lista-checks input:checked").forEach(c => mods.push(c.value));
+      const obj = {
+        correo: document.getElementById("form-correo").value.trim(), 
+        nombre: document.getElementById("form-nombre").value.trim(),
+        rol: document.getElementById("form-rol").value, 
+        modulos: mods
+      };
+      if (!obj.correo || !obj.nombre || mods.length === 0) { 
+        alert('Completa todos los campos y asigna al menos un módulo.'); 
+        return; 
+      }
+      
+      const btn = document.getElementById("btn-guarda-usr");
+      btn.innerText = "Guardando...";
+      try {
+        const usrs = await llamarAPI("guardarUsuarioNuevo", { datos: obj });
+        btn.innerText = "Guardar Permisos";
+        cerrarModalUsuario(); 
+        renderTablaUsuarios(usrs);
+      } catch (err) {
+        btn.innerText = "Guardar Permisos";
+        alert("Error al guardar: " + err.message);
+      }
+    }
+
+    // ================= LIGHTBOX =================
+    function abrirLightbox(previewUrl, titulo, urlOriginal) { 
+      document.getElementById("lb-titulo").innerText = titulo;
+      document.getElementById("lb-frame").src = previewUrl; 
+      document.getElementById("lb-link").href = urlOriginal;
+      document.getElementById("lightbox").classList.remove("hidden"); 
+    }
+
+    function cerrarLightbox() { 
+      document.getElementById("lb-frame").src = ''; 
+      document.getElementById("lightbox").classList.add("hidden"); 
+    }
+
+    // Comprobación de biometría y sesión al cargar
+    revisarSoporteBiometrico();
+    if (sessionStorage.getItem("tok")) iniciarApp();
+  </script>
+</body>
+</html>
